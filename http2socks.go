@@ -3,13 +3,36 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
+	"flag"
 	"io"
 	"log"
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
+
+type addr struct {
+	v string
+}
+
+func (a *addr) String() string {
+	return a.v
+}
+func (a *addr) Set(s string) error {
+	arr := strings.Split(s, ":")
+	if len(arr) != 2 {
+		return errors.New("Invalid parameter")
+	}
+	port, err := strconv.Atoi(arr[1])
+	if err != nil || port < 1024 || port > 65535 {
+		return errors.New("Invalid parameter")
+	}
+	a.v = s
+	return nil
+}
 
 type forward struct {
 	forwardto string
@@ -90,13 +113,13 @@ func (s forward) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 	if req.Method == "CONNECT" {
-		client.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
+		client.Write([]byte("HTTP/1.0 200 Connection Established\r\n\r\n"))
 		//https
 		go io.Copy(server, client)
 		io.Copy(client, server)
 	} else {
 		//http
-		req.Write(server)
+		go req.Write(server)
 		io.Copy(client, server)
 
 	}
@@ -104,19 +127,29 @@ func (s forward) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 }
 
 func main() {
-	forwarder := forward{"127.0.0.1:1080"}
+	//var myhttp, mysocks string
+	var myhttp, mysocks addr
+	flag.Var(&myhttp, "http", "ip:port - http proxy to listen,\n\tdefault for 127.0.0.1:8080")
+	flag.Var(&mysocks, "socks", "ip:port - http proxy to listen,\n\tdefault for 127.0.0.1:1080")
+	flag.Parse()
+
+	if myhttp.v == "" {
+		myhttp.v = "127.0.0.1:8080"
+	}
+	if mysocks.v == "" {
+		mysocks.v = "127.0.0.1:1080"
+	}
+	log.Print("Opened simple http proxy on [", myhttp.v, "]")
+	log.Print("Forwarding to socks proxy on [", mysocks.v, "]")
+	forwarder := forward{mysocks.v}
 
 	s := &http.Server{
-		Addr:           "127.0.0.1:8080",
+		Addr:           myhttp.v,
 		Handler:        forwarder,
-		ReadTimeout:    5 * time.Second,
-		WriteTimeout:   5 * time.Second,
-		MaxHeaderBytes: 1 << 16,
+		ReadTimeout:    10 * time.Second,
+		WriteTimeout:   10 * time.Second,
+		MaxHeaderBytes: 1 << 20,
 	}
 	s.ListenAndServe()
-
-}
-
-func handleHTTPS(res http.ResponseWriter, req *http.Request) {
 
 }

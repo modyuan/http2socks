@@ -139,8 +139,7 @@ func main() {
 	if mysocks.v == "" {
 		mysocks.v = "127.0.0.1:1080"
 	}
-	log.Print("Opened simple http proxy on [", myhttp.v, "]")
-	log.Print("Forwarding to socks proxy on [", mysocks.v, "]")
+
 	forwarder := forward{mysocks.v}
 
 	s := &http.Server{
@@ -150,6 +149,13 @@ func main() {
 		WriteTimeout:   10 * time.Second,
 		MaxHeaderBytes: 1 << 20,
 	}
-	s.ListenAndServe()
+	listener, err := net.Listen("tcp", myhttp.v)
+	if err != nil {
+		log.Fatal("Fail to listen in " + myhttp.v)
+	} else {
+		log.Print("Opened simple http proxy on [", myhttp.v, "]")
+		log.Print("Forwarding to socks proxy on [", mysocks.v, "]")
+		s.Serve(listener)
+	}
 
 }

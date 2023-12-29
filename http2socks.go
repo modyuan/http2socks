@@ -40,11 +40,10 @@ type forward struct {
 
 func (s forward) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	hostname, port := req.URL.Hostname(), req.URL.Port()
-
+	log.Printf("[%v] %v", req.Method, req.URL)
 	hij, ok := res.(http.Hijacker)
 	if !ok {
 		panic("http server dost not support hijacker")
-		//从golnag代码看，肯定是不会失败的啦~
 	}
 	client, _, err := hij.Hijack()
 	if err != nil {
@@ -53,7 +52,6 @@ func (s forward) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	//
 	server, err := net.Dial("tcp", s.forwardto)
 	if err != nil {
-		log.Print("Fail to link socks proxy,can't link to", s.forwardto)
 		return
 	}
 	// client -> server
@@ -85,14 +83,14 @@ func (s forward) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	buf := bytes.NewBuffer([]byte("\x05\x01\x00"))
 	if testip := net.ParseIP(hostname); testip == nil {
 		//hostname is domain
-		buf.WriteByte(3)
+		buf.WriteByte(3) // ATYP = 3 类型为域名
 		domainlen := len(hostname)
-		buf.WriteByte(byte(domainlen))
+		buf.WriteByte(byte(domainlen)) // 域名长度
 		buf.WriteString(hostname)
 	} else {
 		//hostname is ipv4
-		buf.WriteByte(1)
-		buf.Write(testip)
+		buf.WriteByte(1) // ATYP = 1 类型为IP
+		buf.Write(testip.To4())
 	}
 	if port == "" {
 		port = "80"
@@ -107,21 +105,20 @@ func (s forward) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	// +----+-----+-------+------+----------+----------+
 	// | 1  |  1  |   1   |  1   | Variable |    2     |
 	// +----+-----+-------+------+----------+----------+
-	_, err = io.ReadAtLeast(server, temp, 8)
+	_, err = io.ReadAtLeast(server, temp, 2)
 	if err != nil || temp[1] != 0 {
-		log.Fatal("socks server return error. REP =", temp[1])
+		log.Printf("socks server return error. REP = %v", temp[1])
 		return
 	}
 	if req.Method == "CONNECT" {
-		client.Write([]byte("HTTP/1.0 200 Connection Established\r\n\r\n"))
 		//https
+		client.Write([]byte("HTTP/1.0 200 Connection Established\r\n\r\n"))
 		go io.Copy(server, client)
 		io.Copy(client, server)
 	} else {
 		//http
 		go req.Write(server)
 		io.Copy(client, server)
-
 	}
 
 }

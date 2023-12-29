@@ -52,6 +52,7 @@ func (s forward) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	//
 	server, err := net.Dial("tcp", s.forwardto)
 	if err != nil {
+		log.Print("Fail to link socks proxy,can't link to", s.forwardto)
 		return
 	}
 	// client -> server
@@ -105,7 +106,7 @@ func (s forward) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	// +----+-----+-------+------+----------+----------+
 	// | 1  |  1  |   1   |  1   | Variable |    2     |
 	// +----+-----+-------+------+----------+----------+
-	_, err = io.ReadAtLeast(server, temp, 2)
+	_, err = io.ReadAtLeast(server, temp, 10)
 	if err != nil || temp[1] != 0 {
 		log.Printf("socks server return error. REP = %v", temp[1])
 		return
